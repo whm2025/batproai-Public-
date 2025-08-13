@@ -1,0 +1,25 @@
+{
+  "name": "@batproai/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "eslint .",
+    "format": "prettier -w .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"(tests à ajouter)\""
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.2.1"
+  }
+}
