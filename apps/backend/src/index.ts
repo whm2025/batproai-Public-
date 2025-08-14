@@ -1,23 +1,31 @@
 import express from "express";
 import dotenv from "dotenv";
-import cors from "cors";
+import cors, { CorsOptions } from "cors";
 import pkg from "pg";
 const { Pool } = pkg;
+
+import authRouter from "./routes/auth";
+import meRouter from "./routes/me";
+import projectsRouter from "./routes/projects";
+import sitesRouter from "./routes/sites";
+import tasksRouter from "./routes/tasks";
+import budgetRouter from "./routes/budget";
 
 dotenv.config();
 const app = express();
 
-// Autoriser le front Vite (localhost:5173)
-app.use(
-  cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
-  }),
-);
+// CORS — autoriser le front Vite + headers/méthodes
+const corsOptions: CorsOptions = {
+  origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+app.use(cors(corsOptions));
+// ⚠️ Ne pas utiliser app.options("*", …) avec Express 5
+
 app.use(express.json());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.get("/health", async (_req, res) => {
   try {
@@ -29,6 +37,14 @@ app.get("/health", async (_req, res) => {
 });
 
 app.get("/ping", (_req, res) => res.json({ pong: true }));
+
+// Routes
+app.use("/auth", authRouter); // public
+app.use("/me", meRouter); // JWT
+app.use("/projects", projectsRouter); // JWT
+app.use("/projects/:projectId/sites", sitesRouter); // JWT
+app.use("/projects/:projectId/tasks", tasksRouter); // JWT
+app.use("/projects/:projectId/budget", budgetRouter); // JWT
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => console.log(`API running on :${port}`));
