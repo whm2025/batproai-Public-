@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { listProjects, createProject, type Project } from "./lib/projects";
 import { listSites, createSite, type Site } from "./lib/sites";
 import { listTasks, createTask, type Task, type Priority } from "./lib/tasks";
+import {
+  listBudgetLines,
+  createBudgetLine,
+  getBudgetSummary,
+  type BudgetLine,
+  type BudgetType,
+} from "./lib/budget";
 
 export default function App() {
   const [token, setToken] = useState<string>(
@@ -12,6 +19,9 @@ export default function App() {
 
   const [sites, setSites] = useState<Site[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [lines, setLines] = useState<BudgetLine[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [byType, setByType] = useState<Record<string, number>>({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -32,6 +42,13 @@ export default function App() {
   const [taskPriority, setTaskPriority] = useState<Priority>("MEDIUM");
   const [taskDue, setTaskDue] = useState("");
   const [taskSiteId, setTaskSiteId] = useState<number | "">("");
+
+  // form budget
+  const [bLabel, setBLabel] = useState("");
+  const [bType, setBType] = useState<BudgetType>("OTHER");
+  const [bQty, setBQty] = useState<string>("1");
+  const [bUnit, setBUnit] = useState<string>("0");
+  const [bNote, setBNote] = useState("");
 
   async function loadProjects() {
     setError("");
@@ -63,6 +80,21 @@ export default function App() {
       setTasks(data.items);
     } catch (e: any) {
       setError(e.message || "Erreur chargement tâches");
+    }
+  }
+
+  async function loadBudget(pid: number) {
+    setError("");
+    try {
+      const [list, sum] = await Promise.all([
+        listBudgetLines(pid),
+        getBudgetSummary(pid),
+      ]);
+      setLines(list.items);
+      setTotal(sum.total);
+      setByType(sum.byType);
+    } catch (e: any) {
+      setError(e.message || "Erreur chargement budget");
     }
   }
 
@@ -136,9 +168,32 @@ export default function App() {
     }
   }
 
+  async function onAddLine(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    setError("");
+    try {
+      await createBudgetLine(selected.id, {
+        label: bLabel,
+        type: bType,
+        quantity: Number(bQty),
+        unitCost: Number(bUnit),
+        note: bNote || undefined,
+      });
+      setBLabel("");
+      setBType("OTHER");
+      setBQty("1");
+      setBUnit("0");
+      setBNote("");
+      await loadBudget(selected.id);
+    } catch (e: any) {
+      setError(e.message || "Erreur ajout budget");
+    }
+  }
+
   async function selectProject(p: Project) {
     setSelected(p);
-    await Promise.all([loadSites(p.id), loadTasks(p.id)]);
+    await Promise.all([loadSites(p.id), loadTasks(p.id), loadBudget(p.id)]);
   }
 
   const siteOptions = useMemo(
@@ -151,11 +206,11 @@ export default function App() {
       style={{
         padding: 24,
         fontFamily: "system-ui, sans-serif",
-        maxWidth: 1100,
+        maxWidth: 1200,
         margin: "0 auto",
       }}
     >
-      <h1>BatProAI — Projets, Sites & Tâches</h1>
+      <h1>BatProAI — Projets, Sites, Tâches & Budget</h1>
 
       <section
         style={{
@@ -304,7 +359,7 @@ export default function App() {
                   </td>
                   <td style={{ padding: 8 }}>
                     <button onClick={() => selectProject(p)}>
-                      Voir sites & tâches
+                      Voir détails
                     </button>
                   </td>
                 </tr>
@@ -314,301 +369,487 @@ export default function App() {
         )}
       </section>
 
-      {/* Sites */}
+      {/* Détails projet sélectionné */}
       {selected && (
-        <section
-          style={{
-            marginBottom: 24,
-            padding: 12,
-            border: "1px solid #333",
-            borderRadius: 8,
-          }}
-        >
-          <h2>
-            Sites — Projet #{selected.id} « {selected.name} »
-          </h2>
-
-          <form
-            onSubmit={onCreateSite}
+        <>
+          {/* Sites */}
+          <section
             style={{
-              display: "grid",
-              gap: 8,
-              gridTemplateColumns: "1fr 1fr 1fr",
-              alignItems: "center",
+              marginBottom: 24,
+              padding: 12,
+              border: "1px solid #333",
+              borderRadius: 8,
             }}
           >
-            <label>
-              Nom
-              <input
-                value={siteName}
-                onChange={(e) => setSiteName(e.target.value)}
-                required
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label>
-              Adresse
-              <input
-                value={siteAddress}
-                onChange={(e) => setSiteAddress(e.target.value)}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label>
-              Début
-              <input
-                type="date"
-                value={siteStart}
-                onChange={(e) => setSiteStart(e.target.value)}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <div style={{ gridColumn: "1 / span 3" }}>
-              <button type="submit">Ajouter le site</button>
-            </div>
-          </form>
+            <h2>
+              Sites — Projet #{selected.id} « {selected.name} »
+            </h2>
 
-          {sites.length === 0 ? (
-            <p>Aucun site.</p>
-          ) : (
-            <table
+            <form
+              onSubmit={onCreateSite}
               style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                marginTop: 12,
+                display: "grid",
+                gap: 8,
+                gridTemplateColumns: "1fr 1fr 1fr",
+                alignItems: "center",
               }}
             >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    ID
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Nom
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Adresse
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Début
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ padding: 8 }}>{s.id}</td>
-                    <td style={{ padding: 8 }}>{s.name}</td>
-                    <td style={{ padding: 8 }}>{s.address || "-"}</td>
-                    <td style={{ padding: 8 }}>
-                      {s.startDate
-                        ? new Date(s.startDate).toLocaleDateString()
-                        : "-"}
-                    </td>
+              <label>
+                Nom
+                <input
+                  value={siteName}
+                  onChange={(e) => setSiteName(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Adresse
+                <input
+                  value={siteAddress}
+                  onChange={(e) => setSiteAddress(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Début
+                <input
+                  type="date"
+                  value={siteStart}
+                  onChange={(e) => setSiteStart(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <div style={{ gridColumn: "1 / span 3" }}>
+                <button type="submit">Ajouter le site</button>
+              </div>
+            </form>
+
+            {sites.length === 0 ? (
+              <p>Aucun site.</p>
+            ) : (
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  marginTop: 12,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      ID
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Nom
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Adresse
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Début
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+                </thead>
+                <tbody>
+                  {sites.map((s) => (
+                    <tr key={s.id}>
+                      <td style={{ padding: 8 }}>{s.id}</td>
+                      <td style={{ padding: 8 }}>{s.name}</td>
+                      <td style={{ padding: 8 }}>{s.address || "-"}</td>
+                      <td style={{ padding: 8 }}>
+                        {s.startDate
+                          ? new Date(s.startDate).toLocaleDateString()
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
 
-      {/* Tâches */}
-      {selected && (
-        <section
-          style={{
-            marginBottom: 24,
-            padding: 12,
-            border: "1px solid #333",
-            borderRadius: 8,
-          }}
-        >
-          <h2>Tâches — Projet #{selected.id}</h2>
-
-          <form
-            onSubmit={onCreateTask}
+          {/* Tâches */}
+          <section
             style={{
-              display: "grid",
-              gap: 8,
-              gridTemplateColumns: "2fr 1fr 1fr 1fr",
-              alignItems: "center",
+              marginBottom: 24,
+              padding: 12,
+              border: "1px solid #333",
+              borderRadius: 8,
             }}
           >
-            <label>
-              Titre
-              <input
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                required
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label>
-              Priorité
-              <select
-                value={taskPriority}
-                onChange={(e) => setTaskPriority(e.target.value as Priority)}
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="LOW">LOW</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="HIGH">HIGH</option>
-                <option value="CRITICAL">CRITICAL</option>
-              </select>
-            </label>
-            <label>
-              Échéance
-              <input
-                type="date"
-                value={taskDue}
-                onChange={(e) => setTaskDue(e.target.value)}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label>
-              Site (optionnel)
-              <select
-                value={taskSiteId}
-                onChange={(e) =>
-                  setTaskSiteId(
-                    e.target.value === "" ? "" : Number(e.target.value),
-                  )
-                }
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="">—</option>
-                {siteOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ gridColumn: "1 / span 4" }}>
-              Description
-              <textarea
-                value={taskDesc}
-                onChange={(e) => setTaskDesc(e.target.value)}
-                rows={2}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <div style={{ gridColumn: "1 / span 4" }}>
-              <button type="submit">Ajouter la tâche</button>
-            </div>
-          </form>
+            <h2>Tâches — Projet #{selected.id}</h2>
 
-          {tasks.length === 0 ? (
-            <p>Aucune tâche.</p>
-          ) : (
-            <table
+            <form
+              onSubmit={onCreateTask}
               style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                marginTop: 12,
+                display: "grid",
+                gap: 8,
+                gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                alignItems: "center",
               }}
             >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    ID
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Titre
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Priorité
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Statut
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Échéance
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #444",
-                      padding: 8,
-                    }}
-                  >
-                    Site
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((t) => (
-                  <tr key={t.id}>
-                    <td style={{ padding: 8 }}>{t.id}</td>
-                    <td style={{ padding: 8 }}>{t.title}</td>
-                    <td style={{ padding: 8 }}>{t.priority}</td>
-                    <td style={{ padding: 8 }}>{t.status}</td>
-                    <td style={{ padding: 8 }}>
-                      {t.dueDate
-                        ? new Date(t.dueDate).toLocaleDateString()
-                        : "-"}
-                    </td>
-                    <td style={{ padding: 8 }}>{t.siteId ?? "-"}</td>
+              <label>
+                Titre
+                <input
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Priorité
+                <select
+                  value={taskPriority}
+                  onChange={(e) => setTaskPriority(e.target.value as Priority)}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="LOW">LOW</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="CRITICAL">CRITICAL</option>
+                </select>
+              </label>
+              <label>
+                Échéance
+                <input
+                  type="date"
+                  value={taskDue}
+                  onChange={(e) => setTaskDue(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Site (optionnel)
+                <select
+                  value={taskSiteId}
+                  onChange={(e) =>
+                    setTaskSiteId(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">—</option>
+                  {siteOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ gridColumn: "1 / span 4" }}>
+                Description
+                <textarea
+                  value={taskDesc}
+                  onChange={(e) => setTaskDesc(e.target.value)}
+                  rows={2}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <div style={{ gridColumn: "1 / span 4" }}>
+                <button type="submit">Ajouter la tâche</button>
+              </div>
+            </form>
+
+            {tasks.length === 0 ? (
+              <p>Aucune tâche.</p>
+            ) : (
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  marginTop: 12,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      ID
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Titre
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Priorité
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Statut
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Échéance
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Site
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+                </thead>
+                <tbody>
+                  {tasks.map((t) => (
+                    <tr key={t.id}>
+                      <td style={{ padding: 8 }}>{t.id}</td>
+                      <td style={{ padding: 8 }}>{t.title}</td>
+                      <td style={{ padding: 8 }}>{t.priority}</td>
+                      <td style={{ padding: 8 }}>{t.status}</td>
+                      <td style={{ padding: 8 }}>
+                        {t.dueDate
+                          ? new Date(t.dueDate).toLocaleDateString()
+                          : "-"}
+                      </td>
+                      <td style={{ padding: 8 }}>{t.siteId ?? "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          {/* Budget */}
+          <section
+            style={{
+              marginBottom: 24,
+              padding: 12,
+              border: "1px solid #333",
+              borderRadius: 8,
+            }}
+          >
+            <h2>Budget — Projet #{selected.id}</h2>
+
+            <form
+              onSubmit={onAddLine}
+              style={{
+                display: "grid",
+                gap: 8,
+                gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                alignItems: "center",
+              }}
+            >
+              <label>
+                Libellé
+                <input
+                  value={bLabel}
+                  onChange={(e) => setBLabel(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Type
+                <select
+                  value={bType}
+                  onChange={(e) => setBType(e.target.value as BudgetType)}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="MATERIAL">MATERIAL</option>
+                  <option value="LABOR">LABOR</option>
+                  <option value="EQUIPMENT">EQUIPMENT</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </label>
+              <label>
+                Quantité
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={bQty}
+                  onChange={(e) => setBQty(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Coût unitaire
+                <input
+                  type="number"
+                  step="0.01"
+                  value={bUnit}
+                  onChange={(e) => setBUnit(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label style={{ gridColumn: "1 / span 4" }}>
+                Note
+                <textarea
+                  value={bNote}
+                  onChange={(e) => setBNote(e.target.value)}
+                  rows={2}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <div style={{ gridColumn: "1 / span 4" }}>
+                <button type="submit">Ajouter la ligne</button>
+              </div>
+            </form>
+
+            {/* Résumé */}
+            <div style={{ marginTop: 12 }}>
+              <strong>Total:</strong> {total.toLocaleString()}
+              <div style={{ marginTop: 6 }}>
+                {Object.entries(byType).length === 0 ? (
+                  <small>Aucun montant par type.</small>
+                ) : (
+                  <ul>
+                    {Object.entries(byType).map(([k, v]) => (
+                      <li key={k}>
+                        <strong>{k}</strong>: {v.toLocaleString()}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* Lignes */}
+            {lines.length === 0 ? (
+              <p>Aucune ligne de budget.</p>
+            ) : (
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  marginTop: 12,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      ID
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Libellé
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Type
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Qté
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      PU
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        borderBottom: "1px solid #444",
+                        padding: 8,
+                      }}
+                    >
+                      Montant
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => (
+                    <tr key={l.id}>
+                      <td style={{ padding: 8 }}>{l.id}</td>
+                      <td style={{ padding: 8 }}>{l.label}</td>
+                      <td style={{ padding: 8 }}>{l.type}</td>
+                      <td style={{ padding: 8, textAlign: "right" }}>
+                        {l.quantity}
+                      </td>
+                      <td style={{ padding: 8, textAlign: "right" }}>
+                        {l.unitCost}
+                      </td>
+                      <td style={{ padding: 8, textAlign: "right" }}>
+                        {(l.quantity * l.unitCost).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </>
       )}
     </div>
   );

@@ -14,14 +14,15 @@ import budgetRouter from "./routes/budget";
 dotenv.config();
 const app = express();
 
-// CORS — autoriser le front Vite + headers/méthodes
+// CORS
 const corsOptions: CorsOptions = {
   origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 app.use(cors(corsOptions));
-// ⚠️ Ne pas utiliser app.options("*", …) avec Express 5
+// ✅ Express 5: utiliser une REGEX au lieu de "*"
+app.options(/^\/.*/, cors(corsOptions));
 
 app.use(express.json());
 
