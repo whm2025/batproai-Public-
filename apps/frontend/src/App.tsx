@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listProjects, createProject, type Project } from "./lib/projects";
 import { listSites, createSite, type Site } from "./lib/sites";
+import { listTasks, createTask, type Task, type Priority } from "./lib/tasks";
 
 export default function App() {
   const [token, setToken] = useState<string>(
@@ -8,7 +9,10 @@ export default function App() {
   );
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
+
   const [sites, setSites] = useState<Site[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
 
@@ -21,6 +25,13 @@ export default function App() {
   const [siteName, setSiteName] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [siteStart, setSiteStart] = useState("");
+
+  // form task
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDesc, setTaskDesc] = useState("");
+  const [taskPriority, setTaskPriority] = useState<Priority>("MEDIUM");
+  const [taskDue, setTaskDue] = useState("");
+  const [taskSiteId, setTaskSiteId] = useState<number | "">("");
 
   async function loadProjects() {
     setError("");
@@ -42,6 +53,16 @@ export default function App() {
       setSites(data.items);
     } catch (e: any) {
       setError(e.message || "Erreur chargement sites");
+    }
+  }
+
+  async function loadTasks(pid: number) {
+    setError("");
+    try {
+      const data = await listTasks(pid);
+      setTasks(data.items);
+    } catch (e: any) {
+      setError(e.message || "Erreur chargement tâches");
     }
   }
 
@@ -92,21 +113,49 @@ export default function App() {
     }
   }
 
-  function selectProject(p: Project) {
-    setSelected(p);
-    loadSites(p.id);
+  async function onCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    setError("");
+    try {
+      await createTask(selected.id, {
+        title: taskTitle,
+        description: taskDesc || undefined,
+        priority: taskPriority,
+        dueDate: taskDue || undefined,
+        siteId: taskSiteId === "" ? undefined : Number(taskSiteId),
+      });
+      setTaskTitle("");
+      setTaskDesc("");
+      setTaskPriority("MEDIUM");
+      setTaskDue("");
+      setTaskSiteId("");
+      await loadTasks(selected.id);
+    } catch (e: any) {
+      setError(e.message || "Erreur création tâche");
+    }
   }
+
+  async function selectProject(p: Project) {
+    setSelected(p);
+    await Promise.all([loadSites(p.id), loadTasks(p.id)]);
+  }
+
+  const siteOptions = useMemo(
+    () => sites.map((s) => ({ value: s.id, label: `${s.name} (#${s.id})` })),
+    [sites],
+  );
 
   return (
     <div
       style={{
         padding: 24,
         fontFamily: "system-ui, sans-serif",
-        maxWidth: 1000,
+        maxWidth: 1100,
         margin: "0 auto",
       }}
     >
-      <h1>BatProAI — Projets & Sites</h1>
+      <h1>BatProAI — Projets, Sites & Tâches</h1>
 
       <section
         style={{
@@ -134,6 +183,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Projets */}
       <section
         style={{
           marginBottom: 24,
@@ -253,7 +303,9 @@ export default function App() {
                       : "-"}
                   </td>
                   <td style={{ padding: 8 }}>
-                    <button onClick={() => selectProject(p)}>Voir sites</button>
+                    <button onClick={() => selectProject(p)}>
+                      Voir sites & tâches
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -262,6 +314,7 @@ export default function App() {
         )}
       </section>
 
+      {/* Sites */}
       {selected && (
         <section
           style={{
@@ -376,6 +429,180 @@ export default function App() {
                         ? new Date(s.startDate).toLocaleDateString()
                         : "-"}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
+
+      {/* Tâches */}
+      {selected && (
+        <section
+          style={{
+            marginBottom: 24,
+            padding: 12,
+            border: "1px solid #333",
+            borderRadius: 8,
+          }}
+        >
+          <h2>Tâches — Projet #{selected.id}</h2>
+
+          <form
+            onSubmit={onCreateTask}
+            style={{
+              display: "grid",
+              gap: 8,
+              gridTemplateColumns: "2fr 1fr 1fr 1fr",
+              alignItems: "center",
+            }}
+          >
+            <label>
+              Titre
+              <input
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                required
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <label>
+              Priorité
+              <select
+                value={taskPriority}
+                onChange={(e) => setTaskPriority(e.target.value as Priority)}
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="LOW">LOW</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="HIGH">HIGH</option>
+                <option value="CRITICAL">CRITICAL</option>
+              </select>
+            </label>
+            <label>
+              Échéance
+              <input
+                type="date"
+                value={taskDue}
+                onChange={(e) => setTaskDue(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <label>
+              Site (optionnel)
+              <select
+                value={taskSiteId}
+                onChange={(e) =>
+                  setTaskSiteId(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="">—</option>
+                {siteOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ gridColumn: "1 / span 4" }}>
+              Description
+              <textarea
+                value={taskDesc}
+                onChange={(e) => setTaskDesc(e.target.value)}
+                rows={2}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <div style={{ gridColumn: "1 / span 4" }}>
+              <button type="submit">Ajouter la tâche</button>
+            </div>
+          </form>
+
+          {tasks.length === 0 ? (
+            <p>Aucune tâche.</p>
+          ) : (
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                marginTop: 12,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    ID
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    Titre
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    Priorité
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    Statut
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    Échéance
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #444",
+                      padding: 8,
+                    }}
+                  >
+                    Site
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((t) => (
+                  <tr key={t.id}>
+                    <td style={{ padding: 8 }}>{t.id}</td>
+                    <td style={{ padding: 8 }}>{t.title}</td>
+                    <td style={{ padding: 8 }}>{t.priority}</td>
+                    <td style={{ padding: 8 }}>{t.status}</td>
+                    <td style={{ padding: 8 }}>
+                      {t.dueDate
+                        ? new Date(t.dueDate).toLocaleDateString()
+                        : "-"}
+                    </td>
+                    <td style={{ padding: 8 }}>{t.siteId ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>
