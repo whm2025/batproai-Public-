@@ -9,11 +9,14 @@ import {
   type BudgetLine,
   type BudgetType,
 } from "./lib/budget";
+import { login, me, type Me } from "./lib/auth";
 
 export default function App() {
   const [token, setToken] = useState<string>(
     localStorage.getItem("token") || "",
   );
+  const [meUser, setMeUser] = useState<Me | null>(null);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
 
@@ -26,24 +29,28 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
 
-  // form project
+  // forms: auth
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("Passw0rd!");
+
+  // forms: project
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
 
-  // form site
+  // forms: site
   const [siteName, setSiteName] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [siteStart, setSiteStart] = useState("");
 
-  // form task
+  // forms: task
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskPriority, setTaskPriority] = useState<Priority>("MEDIUM");
   const [taskDue, setTaskDue] = useState("");
   const [taskSiteId, setTaskSiteId] = useState<number | "">("");
 
-  // form budget
+  // forms: budget
   const [bLabel, setBLabel] = useState("");
   const [bType, setBType] = useState<BudgetType>("OTHER");
   const [bQty, setBQty] = useState<string>("1");
@@ -99,13 +106,51 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (token) loadProjects();
+    // Quand un token est présent, on tente de récupérer /me + projets
+    (async () => {
+      if (!token) {
+        setMeUser(null);
+        return;
+      }
+      try {
+        const res = await me();
+        setMeUser(res.user);
+        await loadProjects();
+      } catch (e: any) {
+        // Si token invalide, on nettoie
+        setError("Session expirée — reconnectez-vous");
+        localStorage.removeItem("token");
+        setToken("");
+        setMeUser(null);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  function saveToken() {
-    localStorage.setItem("token", token.trim());
-    loadProjects();
+  async function doLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      const res = await login({ email, password });
+      localStorage.setItem("token", res.token);
+      setToken(res.token);
+      setMeUser(res.user);
+      await loadProjects();
+    } catch (e: any) {
+      setError(e.message || "Identifiants invalides");
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    setToken("");
+    setMeUser(null);
+    setProjects([]);
+    setSelected(null);
+    setSites([]);
+    setTasks([]);
+    setLines([]);
+    setByType({});
   }
 
   async function onCreateProject(e: React.FormEvent) {
@@ -201,6 +246,53 @@ export default function App() {
     [sites],
   );
 
+  // --- Rendu ---
+  if (!token) {
+    return (
+      <div
+        style={{
+          padding: 24,
+          fontFamily: "system-ui, sans-serif",
+          maxWidth: 420,
+          margin: "0 auto",
+        }}
+      >
+        <h1>BatProAI — Connexion</h1>
+        {error && (
+          <div style={{ marginBottom: 12, color: "#d33" }}>
+            <strong>Erreur :</strong> {error}
+          </div>
+        )}
+        <form onSubmit={doLogin} style={{ display: "grid", gap: 10 }}>
+          <label>
+            Email
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ width: "100%", padding: 8 }}
+            />
+          </label>
+          <label>
+            Mot de passe
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ width: "100%", padding: 8 }}
+            />
+          </label>
+          <button type="submit">Se connecter</button>
+        </form>
+        <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+          Astuce: utilisez <code>admin@example.com</code> /{" "}
+          <code>Passw0rd!</code> (crée hier)
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -210,30 +302,26 @@ export default function App() {
         margin: "0 auto",
       }}
     >
-      <h1>BatProAI — Projets, Sites, Tâches & Budget</h1>
-
-      <section
+      <div
         style={{
-          marginBottom: 24,
-          padding: 12,
-          border: "1px solid #333",
-          borderRadius: 8,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
         }}
       >
-        <h3>Token (coller celui du /login)</h3>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Bearer token…"
-            style={{ flex: 1, padding: 8 }}
-          />
-          <button onClick={saveToken}>Enregistrer</button>
+        <h1>BatProAI — Projets, Sites, Tâches & Budget</h1>
+        <div>
+          {meUser ? (
+            <span style={{ marginRight: 12 }}>
+              Connecté : <strong>{meUser.email}</strong> ({meUser.role})
+            </span>
+          ) : null}
+          <button onClick={logout}>Déconnexion</button>
         </div>
-      </section>
+      </div>
 
       {error && (
-        <div style={{ marginBottom: 12, color: "#d33" }}>
+        <div style={{ margin: "12px 0", color: "#d33" }}>
           <strong>Erreur :</strong> {error}
         </div>
       )}
@@ -741,7 +829,6 @@ export default function App() {
               </div>
             </form>
 
-            {/* Résumé */}
             <div style={{ marginTop: 12 }}>
               <strong>Total:</strong> {total.toLocaleString()}
               <div style={{ marginTop: 6 }}>
@@ -759,7 +846,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Lignes */}
             {lines.length === 0 ? (
               <p>Aucune ligne de budget.</p>
             ) : (
