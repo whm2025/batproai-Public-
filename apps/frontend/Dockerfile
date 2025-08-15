@@ -6,7 +6,7 @@ RUN corepack enable
 # Monorepo (contexte = racine du repo)
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps ./apps
-COPY packages ./packages 2>/dev/null || true
+COPY packages ./packages
 
 # Install à la racine (workspace)
 RUN pnpm install --frozen-lockfile
